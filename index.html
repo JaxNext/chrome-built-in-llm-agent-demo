@@ -77,18 +77,24 @@
         async function promptModel () {
             let result = ''
             const timestamp = Date.now()
-            let ele = generateMsgEle({
+            const msg = {
                 role: 'assistant',
                 content: 'loading...',
                 timestamp,
-            })
+            }
+            let ele = generateMsgEle(msg)
             msgListBox.appendChild(ele)
             const stream = await session.promptStreaming(msgList)
             for await (const chunk of stream) {
                 result += chunk
                 ele.innerText = `assistant: ${result}`
+                msg.content = result
                 scrollToBottom()
             }
+            
+            msgList.push(msg)
+            console.log('Msg List', msgList);
+            
         }
 
         await checkModelStatus()
