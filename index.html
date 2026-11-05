@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
+    <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
     <div>
         Model status:  <span id="model-status">Unkown</span>
     </div>
-    <input type="text" id="ipt"><button id="sbmt">Send</button>
     <div id="msg-list"></div>
-    <script>
+    <input type="text" id="ipt"><button id="sbmt">Send</button>
+    <script type="module">
 
         const ipt = document.querySelector('#ipt')
         const sendBtn = document.querySelector('#sbmt')
@@ -21,37 +22,80 @@
         let modelAvailability = 'Unkown'
 
         const msgList = []
-        const renderNewMsg = msg => {
+        const generateMsgEle = msg => {
             const {
                 role,
                 content,
                 timestamp
             } = msg
             const item = document.createElement('div')
-            item.className = 'msg-item'
+            item.className = `msg-item ${role === 'assistant' ? `msg-item-${timestamp}` : ''}`
             item.dataset.timestamp = timestamp
             item.innerText = `${role}: ${content}`
+            return item
+        }
+        const scrollToBottom = () => {
+            msgListBox.scrollTop = msgListBox.scrollHeight
+        }
+        const renderNewMsg = msg => {
+            const item = generateMsgEle(msg)
             msgListBox.appendChild(item)
+            scrollToBottom()
         }
         const updateMsgList = msg => {
             msgList.push(msg)
             renderNewMsg(msg)
         }
 
-        sendBtn.addEventListener('click', e => {
+        const sendMsg = e => {
+            if (!ipt.value) {
+                return
+            }
             updateMsgList({
                 role: 'user',
                 content: ipt.value,
                 timestamp: Date.now()
             })
             ipt.value = ''
+            promptModel()
+        }
+
+        sendBtn.addEventListener('click', sendMsg)
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                sendMsg()
+            }
         })
 
+        let originSession = null
+        let session = null
         async function checkModelStatus() {
             modelAvailability = await LanguageModel.availability()
             modelStatusBox.innerText = modelAvailability
         }
-        checkModelStatus()
+
+        async function promptModel () {
+            let result = ''
+            const timestamp = Date.now()
+            let ele = generateMsgEle({
+                role: 'assistant',
+                content: 'loading...',
+                timestamp,
+            })
+            msgListBox.appendChild(ele)
+            const stream = await session.promptStreaming(msgList)
+            for await (const chunk of stream) {
+                result += chunk
+                ele.innerText = `assistant: ${result}`
+                scrollToBottom()
+            }
+        }
+
+        await checkModelStatus()
+        if (modelAvailability === 'available') {
+            originSession = await LanguageModel.create()
+            session = await originSession.clone()
+        }
     </script>
 </body>
 </html>
