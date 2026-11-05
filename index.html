@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div>
+        Model status:  <span id="model-status">Unkown</span>
+    </div>
+    <input type="text" id="ipt"><button id="sbmt">Send</button>
+    <div id="msg-list"></div>
+    <script>
+
+        const ipt = document.querySelector('#ipt')
+        const sendBtn = document.querySelector('#sbmt')
+        const msgListBox = document.querySelector('#msg-list')
+        const modelStatusBox = document.querySelector('#model-status')
+
+        let modelAvailability = 'Unkown'
+
+        const msgList = []
+        const renderNewMsg = msg => {
+            const {
+                role,
+                content,
+                timestamp
+            } = msg
+            const item = document.createElement('div')
+            item.className = 'msg-item'
+            item.dataset.timestamp = timestamp
+            item.innerText = `${role}: ${content}`
+            msgListBox.appendChild(item)
+        }
+        const updateMsgList = msg => {
+            msgList.push(msg)
+            renderNewMsg(msg)
+        }
+
+        sendBtn.addEventListener('click', e => {
+            updateMsgList({
+                role: 'user',
+                content: ipt.value,
+                timestamp: Date.now()
+            })
+            ipt.value = ''
+        })
+
+        async function checkModelStatus() {
+            modelAvailability = await LanguageModel.availability()
+            modelStatusBox.innerText = modelAvailability
+        }
+        checkModelStatus()
+    </script>
+</body>
+</html>
