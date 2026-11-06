@@ -24,7 +24,7 @@
         const contextUsageBox = document.querySelector('#context-usage')
 
         let modelAvailability = 'Unkown'
-        const CONTEXT_WINDOW_THRESHOLD = 0.01
+        const CONTEXT_WINDOW_THRESHOLD = 0.8
         const COMPACT_RATIO = 0.15
 
         let msgList = []
@@ -141,7 +141,30 @@
 
         await checkModelStatus()
         if (modelAvailability === 'available') {
-            originSession = await LanguageModel.create()
+            originSession = await LanguageModel.create({
+                expectedInputs: [
+                    { type: 'tool-response' }
+                ],
+                expectedOutputs: [
+                    { type: 'tool-call' }
+                ],
+                tools: [
+                    {
+                        name: 'get_user_age',
+                        description: 'Get the age of a user by a given name',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                name: {
+                                    type: 'string',
+                                    description: 'The name that user provides'
+                                }
+                            },
+                            required: ['name']
+                        }
+                    }
+                ]
+            })
             session = await originSession.clone()
             updateContextWindow()
         }
