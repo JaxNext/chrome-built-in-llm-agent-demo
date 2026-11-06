@@ -24,6 +24,8 @@
         const contextUsageBox = document.querySelector('#context-usage')
 
         let modelAvailability = 'Unkown'
+        const CONTEXT_WINDOW_THRESHOLD = 0.01
+        const COMPACT_RATIO = 0.15
 
         let msgList = []
         const generateMsgEle = msg => {
@@ -78,6 +80,25 @@
             modelStatusBox.innerText = modelAvailability
         }
 
+        async function compactHistory(params) {
+            console.log('Start compacting', JSON.parse(JSON.stringify(msgList)));
+            
+            const compactMsg = {
+                role: 'user',
+                timestamp: Date.now(),
+                content: `Summarize history messages above into one paragraph less than ${session.contextWindow * COMPACT_RATIO} tokens `,
+            }
+            const result = await promptModel({
+                initialContent: 'Compacting...',
+                compactMsg,
+            })
+            msgList = [result]
+            console.log('Compacted', JSON.parse(JSON.stringify(msgList)));
+            
+            session = await originSession.clone()
+            updateContextWindow()
+        }
+        
         async function updateContextWindow() {
             const {
                 contextUsage,
@@ -87,18 +108,8 @@
             contextUsageBox.innerText = contextUsage
             contextWindowBox.innerText = contextWindow
 
-            if (contextUsage / contextWindow >= 0.8) {
-                const compactMsg = {
-                    role: 'user',
-                    timestamp: Date.now(),
-                    content: `Summarize history messages above into one paragraph less than ${session.contextWindow * 0.1} tokens `,
-                }
-                await promptModel({
-                    initialContent: 'Compacting...',
-                    compactMsg,
-                })
-                msgList = [compactMsg]
-                session = originSession.clone()
+            if (contextUsage / contextWindow >= CONTEXT_WINDOW_THRESHOLD) {
+                await compactHistory()
             }
         }
         
@@ -124,8 +135,8 @@
             }
             
             msgList.push(msg)
-            console.log('Msg List', msgList);
-            updateContextWindow()
+            !compactMsg && updateContextWindow()
+            return msg
         }
 
         await checkModelStatus()
