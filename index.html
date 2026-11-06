@@ -8,7 +8,9 @@
 </head>
 <body>
     <div>
-        Model status:  <span id="model-status">Unkown</span>
+        Model status:  <span id="model-status" class="status-value">Unkown</span>
+        Context usage: <span id="context-usage" class="status-value"></span>
+        Context window: <span id="context-window" class="status-value"></span>
     </div>
     <div id="msg-list"></div>
     <input type="text" id="ipt"><button id="sbmt">Send</button>
@@ -18,10 +20,12 @@
         const sendBtn = document.querySelector('#sbmt')
         const msgListBox = document.querySelector('#msg-list')
         const modelStatusBox = document.querySelector('#model-status')
+        const contextWindowBox = document.querySelector('#context-window')
+        const contextUsageBox = document.querySelector('#context-usage')
 
         let modelAvailability = 'Unkown'
 
-        const msgList = []
+        let msgList = []
         const generateMsgEle = msg => {
             const {
                 role,
@@ -74,17 +78,44 @@
             modelStatusBox.innerText = modelAvailability
         }
 
-        async function promptModel () {
+        async function updateContextWindow() {
+            const {
+                contextUsage,
+                contextWindow
+            } = session
+
+            contextUsageBox.innerText = contextUsage
+            contextWindowBox.innerText = contextWindow
+
+            if (contextUsage / contextWindow >= 0.8) {
+                const compactMsg = {
+                    role: 'user',
+                    timestamp: Date.now(),
+                    content: `Summarize history messages above into one paragraph less than ${session.contextWindow * 0.1} tokens `,
+                }
+                await promptModel({
+                    initialContent: 'Compacting...',
+                    compactMsg,
+                })
+                msgList = [compactMsg]
+                session = originSession.clone()
+            }
+        }
+        
+        async function promptModel ({
+            initialContent = 'Loading...',
+            compactMsg = null,
+        } = {}) {
             let result = ''
             const timestamp = Date.now()
             const msg = {
                 role: 'assistant',
-                content: 'loading...',
+                content: initialContent,
                 timestamp,
             }
             let ele = generateMsgEle(msg)
             msgListBox.appendChild(ele)
-            const stream = await session.promptStreaming(msgList)
+            const stream = await session.promptStreaming([...msgList, compactMsg].filter(x => !!x))
             for await (const chunk of stream) {
                 result += chunk
                 ele.innerText = `assistant: ${result}`
@@ -94,13 +125,14 @@
             
             msgList.push(msg)
             console.log('Msg List', msgList);
-            
+            updateContextWindow()
         }
 
         await checkModelStatus()
         if (modelAvailability === 'available') {
             originSession = await LanguageModel.create()
             session = await originSession.clone()
+            updateContextWindow()
         }
     </script>
 </body>

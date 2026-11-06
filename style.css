@@ -11,3 +11,8 @@
     padding: 8px;
     margin: 4px 0;
 }
+
+.status-value {
+    margin-right: 24px;
+    display: inline-block;
+}
