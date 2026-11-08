@@ -14,6 +14,7 @@
     </div>
     <div id="msg-list"></div>
     <input type="text" id="ipt"><button id="sbmt">Send</button>
+    <div><button id="printer">Print</button></div>
     <script type="module">
 
         const ipt = document.querySelector('#ipt')
@@ -22,10 +23,43 @@
         const modelStatusBox = document.querySelector('#model-status')
         const contextWindowBox = document.querySelector('#context-window')
         const contextUsageBox = document.querySelector('#context-usage')
+        const printer = document.querySelector('#printer')
 
         let modelAvailability = 'Unkown'
         const CONTEXT_WINDOW_THRESHOLD = 0.8
         const COMPACT_RATIO = 0.15
+
+        const tools = [
+            {
+                name: 'get_user_age',
+                description: 'Get the age of a user by a given name',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        name: {
+                            type: 'string',
+                            description: 'The name that user provides'
+                        }
+                    },
+                    required: ['name']
+                },
+                async execute ({ name }) {
+                    if (name === 'Jax') {
+                        return 34
+                    }
+                    return 18
+                }
+            }
+        ]
+        const sessionConfig = {
+            expectedInputs: [
+                { type: 'tool-response' }
+            ],
+            expectedOutputs: [
+                { type: 'tool-call' }
+            ],
+            tools
+        }
 
         let msgList = []
         const generateMsgEle = msg => {
@@ -37,7 +71,7 @@
             const item = document.createElement('div')
             item.className = `msg-item ${role === 'assistant' ? `msg-item-${timestamp}` : ''}`
             item.dataset.timestamp = timestamp
-            item.innerText = `${role}: ${content}`
+            item.innerText = `${role}: ${content[0]?.value || content}`
             return item
         }
         const scrollToBottom = () => {
@@ -50,6 +84,9 @@
         }
         const updateMsgList = msg => {
             msgList.push(msg)
+            if (msg.avoidRender) {
+                return
+            }
             renderNewMsg(msg)
         }
 
@@ -59,7 +96,10 @@
             }
             updateMsgList({
                 role: 'user',
-                content: ipt.value,
+                content: [{
+                    type: 'text',
+                    value: ipt.value
+                }],
                 timestamp: Date.now()
             })
             ipt.value = ''
@@ -71,6 +111,11 @@
             if (e.key === 'Enter') {
                 sendMsg()
             }
+        })
+
+        printer.addEventListener('click', e => {
+            console.log('Message List', msgList);
+            
         })
 
         let originSession = null
@@ -86,7 +131,10 @@
             const compactMsg = {
                 role: 'user',
                 timestamp: Date.now(),
-                content: `Summarize history messages above into one paragraph less than ${session.contextWindow * COMPACT_RATIO} tokens `,
+                content: [{
+                    type: 'text',
+                    value: `Summarize history messages above into one paragraph less than ${session.contextWindow * COMPACT_RATIO} tokens `
+                }],
             }
             const result = await promptModel({
                 initialContent: 'Compacting...',
@@ -113,58 +161,86 @@
             }
         }
         
+        async function executeToolCall(toolCall) {
+            const {
+                name,
+                callId,
+                arguments: toolCallArguments
+            } = toolCall
+            const target = tools.find(x => x.name === name)
+            if (!target || !target.execute) {
+                return null
+            }
+            const result = await target.execute(toolCallArguments)
+            updateMsgList({
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool-response',
+                        value: new LanguageModelToolSuccess({
+                            name,
+                            callId,
+                            result: [{
+                                type: 'object',
+                                value: result
+                            }]
+                        })
+                    }
+                ],
+                timestamp: Date.now(),
+                avoidRender: true,
+            })
+            await promptModel()
+        }
+        
         async function promptModel ({
             initialContent = 'Loading...',
             compactMsg = null,
+            toolCallResultContent = null,
         } = {}) {
             let result = ''
             const timestamp = Date.now()
             const msg = {
                 role: 'assistant',
-                content: initialContent,
+                content: [{
+                    type: 'text',
+                    value: initialContent
+                }],
                 timestamp,
             }
             let ele = generateMsgEle(msg)
             msgListBox.appendChild(ele)
             const stream = await session.promptStreaming([...msgList, compactMsg].filter(x => !!x))
+            let isStringStream = true
             for await (const chunk of stream) {
-                result += chunk
-                ele.innerText = `assistant: ${result}`
-                msg.content = result
+                if (typeof chunk === 'string') {
+                    result += chunk
+                    msg.content[0].value = result
+                    ele.innerText = `assistant: ${msg.content[0].value}`
+                } else if (!!chunk.type) {
+                    // handle chunk according to it's type
+                    isStringStream = false
+                    if (chunk.type === 'tool-call') {
+                        msg.content[0].value = `Calling tool ${chunk.value.name} with arguments ${JSON.stringify(chunk.value.arguments)}`
+                        ele.innerText = `assistant: ${msg.content[0].value}`
+                        msgList.push(msg)
+                        await executeToolCall(chunk.value)
+                    }
+                    ele.innerText = `assistant: ${msg.content.map(x => x.value).join('\n')}`
+                }
+                
+                
                 scrollToBottom()
             }
             
-            msgList.push(msg)
+            isStringStream && msgList.push(msg)
             !compactMsg && updateContextWindow()
             return msg
         }
 
         await checkModelStatus()
         if (modelAvailability === 'available') {
-            originSession = await LanguageModel.create({
-                expectedInputs: [
-                    { type: 'tool-response' }
-                ],
-                expectedOutputs: [
-                    { type: 'tool-call' }
-                ],
-                tools: [
-                    {
-                        name: 'get_user_age',
-                        description: 'Get the age of a user by a given name',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                name: {
-                                    type: 'string',
-                                    description: 'The name that user provides'
-                                }
-                            },
-                            required: ['name']
-                        }
-                    }
-                ]
-            })
+            originSession = await LanguageModel.create(sessionConfig)
             session = await originSession.clone()
             updateContextWindow()
         }
