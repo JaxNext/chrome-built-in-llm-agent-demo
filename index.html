@@ -216,13 +216,13 @@
             const stream = await session.promptStreaming([...msgList, compactMsg].filter(x => !!x))
             let isStringStream = true
             for await (const chunk of stream) {
-                console.log('Streaming', chunk)
                 
                 if (typeof chunk === 'string') {
                     result += chunk
                     msg.content[0].value = result
                     ele.innerText = `assistant: ${msg.content[0].value}`
                 } else if (!!chunk.type) {
+                    console.log('Streaming', chunk)
                     // handle chunk according to it's type
                     isStringStream = false
                     if (chunk.type === 'tool-call') {
