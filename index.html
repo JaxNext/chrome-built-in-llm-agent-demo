@@ -294,6 +294,7 @@
                         value: '',
                         text: '',
                     }
+                    msg.content[msg.content.length - 1] = lastContent
                 }
 
                 if (typeof chunk === 'string') {
@@ -302,19 +303,19 @@
                     lastContent.text = textChunks
                     
                     msg.content[msg.content.length - 1] = lastContent
-                    ele.innerText = `assistant: ${msg.content.map(x => x.text).join('\n')}`
+                    ele.innerText = `assistant: ${msg.content.filter(x => x.text).map(x => x.text).join('\n')}`
                 } else {
                     textChunks = ''
                     console.log('Streaming', chunk)
                     // handle chunk according to it's type
                     isStringStream = false
                     if (chunk.type === 'tool-call') {
-                        lastContent = {
+                        const newContent = {
                             ...chunk,
                             text: formatToolCallMsgText(chunk.value)
                         }
-                        msg.content[msg.content.length - 1] = lastContent
-                        ele.innerText = `assistant: ${msg.content.map(x => x.text).join('\n')}`
+                        msg.content.push(newContent)
+                        ele.innerText = `assistant: ${msg.content.filter(x => x.text).map(x => x.text).join('\n')}`
                         msgList.push(msg)
                         await executeToolCall(chunk.value)
                     }
