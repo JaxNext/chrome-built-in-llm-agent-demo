@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { msgList, msgListEl } from "../composables/useMsgList";
+import { msgList, setListEl } from "../composables/useMsgList";
 import MsgItem from "./MsgItem.vue";
 
 function printMsgList() {
@@ -9,7 +9,7 @@ function printMsgList() {
 
 <template>
     <div
-        :ref="msgListEl"
+        :ref="setListEl"
         class="msg-list">
         <MsgItem
             v-for="msg in msgList"

@@ -3,9 +3,13 @@ import { ref, nextTick } from 'vue'
 const msgList = ref([])
 const msgListEl = ref(null)
 
+function setListEl(el: HTMLElement | null) {
+    msgListEl.value = el
+}
+
 function scrollList() {
     nextTick(() => {
-        debugger
+        // debugger
         const el = msgListEl.value
         if (!el) return
         el.scrollTop = el.scrollHeight
@@ -24,4 +28,5 @@ export {
 
     addMsg,
     scrollList,
+    setListEl,
 }
