@@ -1,0 +1,18 @@
+<script setup lang="ts">
+import { session, availability } from "../composables/useModel";
+</script>
+
+<template>
+    <div class="flex">
+        Model status:  <span class="status-value">{{ availability }}</span>
+        Context usage: <span class="status-value">{{ session?.contextUsage }}</span>
+        Context window: <span class="status-value">{{ session?.contextWindow }}</span>
+    </div>
+</template>
+
+<style lang="css" scoped>
+    .status-value {
+        margin-right: 24px;
+        display: inline-block;
+    }
+</style>
