@@ -26,19 +26,22 @@
         const printer = document.querySelector('#printer')
 
         let modelAvailability = 'Unkown'
+        let isCompacting = false
+        ipt.disabled = true
+
         const CONTEXT_WINDOW_THRESHOLD = 0.8
         const COMPACT_RATIO = 0.15
 
         const tools = [
             {
-                name: 'get_user_age',
-                description: 'Get the age of a user by a given name',
+                name: 'get_age_by_name',
+                description: 'Return the age of a person if asked by a name',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         name: {
                             type: 'string',
-                            description: 'The name that user provides'
+                            description: 'The name of a person'
                         }
                     },
                     required: ['name']
@@ -49,9 +52,56 @@
                     }
                     return 18
                 }
+            },
+            {
+                name: 'get_hobby_by_age',
+                description: 'Return the hobby of a person if asked by a age',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        age: {
+                            type: 'number',
+                            description: 'The age of a person'
+                        }
+                    },
+                    required: ['age']
+                },
+                async execute ({ age }) {
+                    if (age >= 30) {
+                        return 'Reading'
+                    }
+                    return 'Playing'
+                }
+            },
+            {
+                name: 'get_gift_by_hobby',
+                description: 'Return a gift depend on hobby',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        hobby: {
+                            type: 'string',
+                            description: 'A hobby'
+                        }
+                    },
+                    required: ['hobby']
+                },
+                async execute ({ hobby }) {
+                    const giftMap = {
+                        'Playing': 'Baseball',
+                        'Reading': 'Book'
+                    }
+                    return giftMap[hobby] || 'Cake'
+                }
             }
         ]
         const sessionConfig = {
+            // initialPrompts: [
+            //     {
+            //         role: 'system',
+            //         content: 'Use tools and chain of thoughts to help user'
+            //     }
+            // ],
             expectedInputs: [
                 { type: 'tool-response' }
             ],
@@ -71,22 +121,23 @@
             const item = document.createElement('div')
             item.className = `msg-item ${role === 'assistant' ? `msg-item-${timestamp}` : ''}`
             item.dataset.timestamp = timestamp
-            item.innerText = `${role}: ${content[0]?.value || content}`
+            item.innerText = `${role}: ${content[0]?.text || content}`
             return item
         }
         const scrollToBottom = () => {
             msgListBox.scrollTop = msgListBox.scrollHeight
         }
         const renderNewMsg = msg => {
+            if (!msg?.content?.some(x => x.text)) return
             const item = generateMsgEle(msg)
             msgListBox.appendChild(item)
             scrollToBottom()
         }
         const updateMsgList = msg => {
             msgList.push(msg)
-            if (msg.avoidRender) {
-                return
-            }
+            // if (msg.avoidRender) {
+            //     return
+            // }
             renderNewMsg(msg)
         }
 
@@ -98,7 +149,8 @@
                 role: 'user',
                 content: [{
                     type: 'text',
-                    value: ipt.value
+                    value: ipt.value,
+                    text: ipt.value
                 }],
                 timestamp: Date.now()
             })
@@ -126,6 +178,10 @@
         }
 
         async function compactHistory(params) {
+            if (isCompacting) {
+                return
+            }
+            isCompacting = true
             console.log('Start compacting', JSON.parse(JSON.stringify(msgList)));
             
             const compactMsg = {
@@ -145,6 +201,7 @@
             
             session = await originSession.clone()
             updateContextWindow()
+            isCompacting = false
         }
         
         async function updateContextWindow() {
@@ -159,6 +216,16 @@
             if (contextUsage / contextWindow >= CONTEXT_WINDOW_THRESHOLD) {
                 await compactHistory()
             }
+        }
+        
+        function formatToolCallMsgText(toolCall) {
+            const {
+                name,
+                callId = '',
+                callID = '',
+                arguments: toolCallArguments
+            } = toolCall
+            return `Calling tool ${name} with arguments ${JSON.stringify(toolCallArguments)}`
         }
         
         async function executeToolCall(toolCall) {
@@ -185,13 +252,13 @@
                             callID: toolCallId,
                             result: [{
                                 type: 'object',
-                                value: result
+                                value: result,
                             }]
-                        })
+                        }),
                     }
                 ],
                 timestamp: Date.now(),
-                avoidRender: true,
+                // avoidRender: true, // todo may useless if render 'text' but not 'value'
             })
             await promptModel()
         }
@@ -201,45 +268,66 @@
             compactMsg = null,
             toolCallResultContent = null,
         } = {}) {
-            let result = ''
+            let textChunks = ''
             const timestamp = Date.now()
             const msg = {
                 role: 'assistant',
                 content: [{
                     type: 'text',
-                    value: initialContent
+                    value: initialContent,
+                    text: initialContent,
+                    isInitial: true
                 }],
                 timestamp,
             }
             let ele = generateMsgEle(msg)
             msgListBox.appendChild(ele)
+            ipt.disabled = true
             const stream = await session.promptStreaming([...msgList, compactMsg].filter(x => !!x))
             let isStringStream = true
             for await (const chunk of stream) {
-                
+                let lastContent = msg.content[msg.content.length - 1]
+
+                if (lastContent.isInitial) {
+                    lastContent = {
+                        type: 'text',
+                        value: '',
+                        text: '',
+                    }
+                }
+
                 if (typeof chunk === 'string') {
-                    result += chunk
-                    msg.content[0].value = result
-                    ele.innerText = `assistant: ${msg.content[0].value}`
-                } else if (!!chunk.type) {
+                    textChunks += chunk
+                    lastContent.value = textChunks
+                    lastContent.text = textChunks
+                    
+                    msg.content[msg.content.length - 1] = lastContent
+                    ele.innerText = `assistant: ${msg.content.map(x => x.text).join('\n')}`
+                } else {
+                    textChunks = ''
                     console.log('Streaming', chunk)
                     // handle chunk according to it's type
                     isStringStream = false
                     if (chunk.type === 'tool-call') {
-                        msg.content[0].value = `Calling tool ${chunk.value.name} with arguments ${JSON.stringify(chunk.value.arguments)}`
-                        ele.innerText = `assistant: ${msg.content[0].value}`
+                        lastContent = {
+                            ...chunk,
+                            text: formatToolCallMsgText(chunk.value)
+                        }
+                        msg.content[msg.content.length - 1] = lastContent
+                        ele.innerText = `assistant: ${msg.content.map(x => x.text).join('\n')}`
                         msgList.push(msg)
                         await executeToolCall(chunk.value)
                     }
-                    ele.innerText = `assistant: ${msg.content.map(x => x.value).join('\n')}`
                 }
                 
                 
                 scrollToBottom()
             }
             
-            isStringStream && msgList.push(msg)
+            isStringStream && msgList.push(msg) // todo may useless if render 'text' but not 'value'
             !compactMsg && updateContextWindow()
+
+            ipt.disabled = false
             return msg
         }
 
@@ -248,6 +336,7 @@
             originSession = await LanguageModel.create(sessionConfig)
             session = await originSession.clone()
             updateContextWindow()
+            ipt.disabled = false
         }
     </script>
 </body>
