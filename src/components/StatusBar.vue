@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { session, availability } from "../composables/useModel";
+import { session, availability, contextUsage } from "../composables/useModel";
 </script>
 
 <template>
     <div class="flex">
         Model status:  <span class="status-value">{{ availability }}</span>
-        Context usage: <span class="status-value">{{ session?.contextUsage }}</span>
+        Context usage: <span class="status-value">{{ contextUsage }}</span>
         Context window: <span class="status-value">{{ session?.contextWindow }}</span>
     </div>
 </template>

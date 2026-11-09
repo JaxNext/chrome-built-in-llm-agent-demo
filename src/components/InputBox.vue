@@ -1,22 +1,27 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { addMsg } from "../composables/useMsgList";
-import { promptModel } from "../composables/useModel";
+import { promptModel, availability, isGenerating } from "../composables/useModel";
 
 const inputVal = ref('')
 
+const disableInput = computed(() => {
+    return isGenerating.value || availability.value !== 'available'
+})
+
 async function sendMsg() {
-    if (!inputVal.value) return
+    if (!inputVal.value || disableInput.value) return
+    const role = 'user'
     addMsg({
-        role: 'user',
+        role,
         content: [{
             type: 'text',
             value: inputVal.value,
         }],
-        timestamp: Date.now()
+        msgId: `${role}-${Date.now()}`
     })
     inputVal.value = ''
-    //await promptModel()
+    await promptModel()
     
 }
 </script>
@@ -26,10 +31,12 @@ async function sendMsg() {
         <input
             type="text"
             v-model.trim="inputVal"
+            :disabled="disableInput"
             class="border"
             @keydown.enter="sendMsg">
         <button
             class="ml-2 px-2 border"
+            :disabled="disableInput"
             @click="sendMsg">Send</button>
     </div>
 </template>

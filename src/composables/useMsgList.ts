@@ -1,5 +1,6 @@
 import { ref, nextTick } from 'vue'
 
+const compactedHistory = ref([])
 const msgList = ref([])
 const msgListEl = ref(null)
 
@@ -21,12 +22,18 @@ function addMsg(msg) {
     scrollList()
 }
 
+function clearMsgList() {
+    msgList.value.length = 0
+}
+
 
 export {
     msgList,
     msgListEl,
+    compactedHistory,
 
     addMsg,
     scrollList,
     setListEl,
+    clearMsgList
 }

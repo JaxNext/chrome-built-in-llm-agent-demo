@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { msgList, setListEl } from "../composables/useMsgList";
+import { msgList, setListEl, compactedHistory } from "../composables/useMsgList";
 import MsgItem from "./MsgItem.vue";
 
 function printMsgList() {
@@ -12,8 +12,8 @@ function printMsgList() {
         :ref="setListEl"
         class="msg-list">
         <MsgItem
-            v-for="msg in msgList"
-            :key="msg.timestamp"
+            v-for="msg in [...compactedHistory, ...msgList].filter(x => !x.noRender)"
+            :key="msg.msgId"
             :msg="msg"
         />
     </div>
