@@ -97,6 +97,13 @@ const tools: LanguageModelTool[] = [
         }
     }
 ]
+
+const availability = ref('')
+const isGenerating = ref(false)
+const isIniting = ref(false)
+const contextUsage = ref(0)
+const controller = ref<AbortController>()
+
 const sessionConfig: SessionConfig = {
     // initialPrompts: [
     //     {
@@ -114,10 +121,6 @@ const sessionConfig: SessionConfig = {
     tools
 }
 
-const availability = ref('')
-const isGenerating = ref(false)
-const contextUsage = ref(0)
-
 const originSession = ref<LanguageModel>()
 const session = ref<LanguageModel>()
 
@@ -127,10 +130,13 @@ async function checkStatus(): Promise<void> {
 }
 
 async function initSession(): Promise<void> {
+    if (isIniting.value) return
+    isIniting.value = true
     await checkStatus()
     originSession.value = await LanguageModel.create(sessionConfig as LanguageModelCreateOptions)
     session.value = await originSession.value.clone()
     contextUsage.value = session.value.contextUsage
+    isIniting.value = false
 }
 
 function formatToolCallMsgText(toolCall: ToolCall): string {
@@ -243,7 +249,14 @@ async function promptModel ({
     addMsg(msg)
     
     isGenerating.value = true
-    const stream = await session.value.promptStreaming(chatHistory as LanguageModelPrompt)
+    controller.value = new AbortController()
+    controller.value.signal.onabort = e => {
+        console.log('User aborted the response');
+        isGenerating.value = false
+    }
+    const stream = await session.value.promptStreaming(chatHistory as LanguageModelPrompt, {
+        signal: controller.value.signal
+    })
 
     const currentMsg = msgList.value.find(x => x.msgId === msgId) as Msg
     const msgContent = currentMsg.content
@@ -282,7 +295,9 @@ export {
     session,
     availability,
     isGenerating,
+    isIniting,
     contextUsage,
+    controller,
 
     initSession,
     promptModel,

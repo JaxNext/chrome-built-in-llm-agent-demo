@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { addMsg } from "../composables/useMsgList";
-import { promptModel, availability, isGenerating } from "../composables/useModel";
+import { promptModel, availability, isGenerating, isIniting, controller } from "../composables/useModel";
 
 const inputVal = ref('')
 
 const disableInput = computed(() => {
-    return isGenerating.value || availability.value !== 'available'
+    return isGenerating.value || isIniting.value || availability.value !== 'available'
+})
+
+const disableAbortBtn = computed(() => {
+    return !isGenerating.value
 })
 
 async function sendMsg() {
@@ -24,6 +28,10 @@ async function sendMsg() {
     await promptModel()
     
 }
+
+function abortGenerating() {
+    controller.value?.abort('User aborted the response')
+}
 </script>
 
 <template>
@@ -38,6 +46,10 @@ async function sendMsg() {
             class="ml-2 px-2 border"
             :disabled="disableInput"
             @click="sendMsg">Send</button>
+        <button
+            class="ml-2 px-2 border"
+            :disabled="disableAbortBtn"
+            @click="abortGenerating">Abort</button>
     </div>
 </template>
 
