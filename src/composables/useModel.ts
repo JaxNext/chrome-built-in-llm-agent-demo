@@ -113,7 +113,9 @@ const sessionConfig: SessionConfig = {
     // ],
     expectedInputs: [
         { type: 'tool-call' },
-        { type: 'tool-response' }
+        { type: 'tool-response' },
+        // { type: 'audio' },
+        { type: 'image' },
     ],
     expectedOutputs: [
         { type: 'tool-call' }

@@ -1,33 +1,49 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { getSrc } from "../utils/file";
 import { formatToolCallMsgText } from "../composables/useModel";
+import type { MsgContentItem } from "../composables/useMsgList";
 
 const props = defineProps({
     msg: Object
 })
 
-const contentText = computed(() => {
-    return props.msg.content.map(x => {
-        const { type, value } = x
+function calcTextContent(content: MsgContentItem): string {
+    const { type, value } = content
 
-        switch (type) {
-            case 'tool-call':
-                return formatToolCallMsgText(value)
-            case 'tool-response':
-                return ''
-            default:
-                return value
-                break;
-        }
-    }).filter(x => !!x).join('\n')
-
-})
+    let res = ''
+    switch (type) {
+        case 'tool-call':
+            res = formatToolCallMsgText(value)
+            break;
+        case 'tool-response':
+            res = ''
+            break;
+        default:
+            res = value
+            break;
+    }
+    return res
+}
 </script>
 
 <template>
     <div class="msg-item flex mt-4">
         <div class="role border rounded-full px-2 py-0 mr-2 h-[26px]">{{ msg.role }}</div>
-        <div class="content whitespace-pre-line">{{ contentText }}</div>
+        <div class="content whitespace-pre-line">
+            <div
+                v-for="(content, index) in msg.content"
+                :key="index"
+                class="content-item">
+                <div
+                    v-if="content.type === 'image'"
+                    class="img-box relative w-16 h-16 m-2">
+                    <img
+                        :src="getSrc(content.value)"
+                        class="w-full h-full object-contain">
+                </div>
+                <div v-else>{{ calcTextContent(content) }}</div>
+            </div>
+        </div>
     </div>
 </template>
 
