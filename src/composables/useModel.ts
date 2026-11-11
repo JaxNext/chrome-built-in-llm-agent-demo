@@ -187,7 +187,7 @@ async function updateContextUsage() {
     }
 }
         
-async function executeToolCall(toolCall: ToolCall): Promise<void> {
+async function executeToolCall(toolCall: ToolCall): Promise<LanguageModelToolSuccess> {
     const {
         name,
         callId = '',
@@ -200,28 +200,16 @@ async function executeToolCall(toolCall: ToolCall): Promise<void> {
         return Promise.reject()
     }
     const result = await target.execute(toolCallArguments)
-    const role = 'user'
-    const msgId = `${role}-${Date.now()}`
-    addMsg({
-        role,
-        content: [
-            {
-                type: 'tool-response',
-                value: new LanguageModelToolSuccess({
-                    name,
-                    callId: toolCallId,
-                    callID: toolCallId,
-                    result: [{
-                        type: 'object',
-                        value: result,
-                    }]
-                }) as LanguageModelMessageValue,
-            }
-        ],
-        msgId,
-        noRender: true,
+    
+    return new LanguageModelToolSuccess({
+        name,
+        callId: toolCallId,
+        callID: toolCallId,
+        result: [{
+            type: 'object',
+            value: result,
+        }]
     })
-    await promptModel()
 }
 
 async function promptModel ({
@@ -260,6 +248,7 @@ async function promptModel ({
 
     const currentMsg = msgList.value.find(x => x.msgId === msgId) as Msg
     const msgContent = currentMsg.content
+    const toolCallList = []
     for await (const chunk of stream as unknown as AsyncIterable<StreamChunk>) {
         let lastContent = msgContent[msgContent.length - 1]
 
@@ -279,12 +268,32 @@ async function promptModel ({
                 msgContent.push(chunk)
             }
             if (chunk.type === 'tool-call') {
-                await executeToolCall(chunk.value as unknown as ToolCall)
+                // await executeToolCall(chunk.value as unknown as ToolCall)
+                toolCallList.push(chunk.value)
             }
         }
     }
     
-    // !compactMsg && updateContextWindow() // todo
+    if (toolCallList.length) {
+        const toolResContent = (await Promise.all(toolCallList.map(executeToolCall))).map(x => {
+            return {
+                type: 'tool-response',
+                value: x as LanguageModelMessageValue,
+            }
+        })
+
+        const role = 'user'
+        const msgId = `${role}-${Date.now()}`
+        const msg: Msg = {
+            role,
+            content: toolResContent as LanguageModelMessageContent[],
+            msgId,
+            noRender: true,
+        }
+        addMsg(msg)
+        await promptModel()
+    }
+    
     scrollList() // todo: 待优化：回答内容较长时，全部答完才会滚动，而不是每行触底了就滚动
     isGenerating.value = false
     await updateContextUsage()
