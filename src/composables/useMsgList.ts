@@ -1,10 +1,22 @@
 import { ref, nextTick } from 'vue'
+import type { MsgType } from "./useModel";
 
-const compactedHistory = ref([])
-const msgList = ref([])
-const msgListEl = ref(null)
+export interface MsgContentItem extends Omit<LanguageModelMessageContent, 'type'> {
+    isInitial?: boolean
+    type: MsgType
+}
 
-function setListEl(el: HTMLElement | null) {
+export interface Msg extends Omit<LanguageModelMessage, 'content'> {
+    msgId: string
+    noRender?: boolean
+    content: MsgContentItem[]
+}
+
+const compactedHistory = ref<Msg[]>([])
+const msgList = ref<Msg[]>([])
+const msgListEl = ref<HTMLElement>()
+
+function setListEl(el: HTMLElement) {
     msgListEl.value = el
 }
 
@@ -17,7 +29,7 @@ function scrollList() {
     })
 }
 
-function addMsg(msg) {
+function addMsg(msg: Msg): void {
     msgList.value.push(msg)
     scrollList()
 }

@@ -1,12 +1,39 @@
 import { ref } from 'vue'
+
+import type { Msg, MsgContentItem } from "./useMsgList";
 import { msgList, addMsg, scrollList, clearMsgList, compactedHistory } from './useMsgList'
+
+type PromptParams = {
+    initialContent?: string
+    compactMsg?: Msg | null
+}
+
+type ToolCall = {
+    name: string
+    callId?: string
+    callID?: string
+    arguments: unknown
+}
+
+type StreamChunk = string | MsgContentItem
+
+export type MsgType = LanguageModelMessageType | 'tool-call' | 'tool-response'
+
+interface ExpectedIO extends Omit<LanguageModelExpected, 'type'>{
+    type: MsgType
+}
+
+type SessionConfig = Omit<LanguageModelCreateOptions, 'expectedInputs' | 'expectedOutputs'> & {
+    expectedInputs: ExpectedIO[]
+    expectedOutputs: ExpectedIO[]
+}
 
 const CONTEXT_WINDOW_THRESHOLD = 0.8
 const COMPACT_RATIO = 0.15
 
 let isCompacting = false
 
-const tools = [
+const tools: LanguageModelTool[] = [
     {
         name: 'get_age_by_name',
         description: 'Return the age of a person if asked by a name',
@@ -22,9 +49,9 @@ const tools = [
         },
         async execute ({ name }) {
             if (name === 'Jax') {
-                return 34
+                return '34'
             }
-            return 18
+            return '18'
         }
     },
     {
@@ -63,13 +90,14 @@ const tools = [
         async execute ({ hobby }) {
             const giftMap = {
                 'Playing': 'Baseball',
-                'Reading': 'Book'
+                'Reading': 'Book',
+                default: 'Cake'
             }
-            return giftMap[hobby] || 'Cake'
+            return giftMap[hobby as keyof typeof giftMap] ?? giftMap.default
         }
     }
 ]
-const sessionConfig = {
+const sessionConfig: SessionConfig = {
     // initialPrompts: [
     //     {
     //         role: 'system',
@@ -77,6 +105,7 @@ const sessionConfig = {
     //     }
     // ],
     expectedInputs: [
+        { type: 'tool-call' },
         { type: 'tool-response' }
     ],
     expectedOutputs: [
@@ -89,22 +118,22 @@ const availability = ref('')
 const isGenerating = ref(false)
 const contextUsage = ref(0)
 
-const originSession = ref(null)
-const session = ref(null)
+const originSession = ref<LanguageModel>()
+const session = ref<LanguageModel>()
 
-async function checkStatus() {
+async function checkStatus(): Promise<void> {
     availability.value = await LanguageModel?.availability?.()
     if (availability.value !== 'available') return
 }
 
-async function initSession() {
+async function initSession(): Promise<void> {
     await checkStatus()
-    originSession.value = await LanguageModel.create(sessionConfig)
+    originSession.value = await LanguageModel.create(sessionConfig as LanguageModelCreateOptions)
     session.value = await originSession.value.clone()
     contextUsage.value = session.value.contextUsage
 }
 
-function formatToolCallMsgText(toolCall) {
+function formatToolCallMsgText(toolCall: ToolCall): string {
     const {
         name,
         arguments: toolCallArguments
@@ -112,14 +141,14 @@ function formatToolCallMsgText(toolCall) {
     return `Calling tool ${name} with arguments ${JSON.stringify(toolCallArguments)}`
 }
 
-async function compactHistory() {
-    if (isCompacting) return
+async function compactHistory(): Promise<void> {
+    if (isCompacting || !session.value || !originSession.value) return
     isCompacting = true
     console.log('Start compacting', JSON.parse(JSON.stringify(msgList.value)));
     
     const role = 'user'
     const msgId = `${role}-${Date.now()}`
-    const compactMsg = {
+    const compactMsg: Msg = {
         role: 'user',
         msgId,
         content: [{
@@ -145,13 +174,14 @@ async function compactHistory() {
 }
 
 async function updateContextUsage() {
+    if (!session.value) return
     contextUsage.value = session.value.contextUsage
     if (contextUsage.value / session.value.contextWindow >= CONTEXT_WINDOW_THRESHOLD) {
         await compactHistory()
     }
 }
         
-async function executeToolCall(toolCall) {
+async function executeToolCall(toolCall: ToolCall): Promise<void> {
     const {
         name,
         callId = '',
@@ -161,7 +191,7 @@ async function executeToolCall(toolCall) {
     const toolCallId = callID || callId
     const target = tools.find(x => x.name === name)
     if (!target || !target.execute) {
-        return null
+        return Promise.reject()
     }
     const result = await target.execute(toolCallArguments)
     const role = 'user'
@@ -179,7 +209,7 @@ async function executeToolCall(toolCall) {
                         type: 'object',
                         value: result,
                     }]
-                }),
+                }) as LanguageModelMessageValue,
             }
         ],
         msgId,
@@ -191,11 +221,13 @@ async function executeToolCall(toolCall) {
 async function promptModel ({
     initialContent = 'Loading...',
     compactMsg = null,
-} = {}) {
+}: PromptParams = {}): Promise<Msg> {
+    if (!session.value) return Promise.reject('LanguageModel session is not inited yet.')
+
     const timestamp = Date.now()
     const role = 'assistant'
     const msgId = `${role}-${timestamp}`
-    const msg = {
+    const msg: Msg = {
         role,
         content: [{
             type: 'text',
@@ -211,11 +243,11 @@ async function promptModel ({
     addMsg(msg)
     
     isGenerating.value = true
-    const stream = await session.value.promptStreaming(chatHistory)
+    const stream = await session.value.promptStreaming(chatHistory as LanguageModelPrompt)
 
-    const currentMsg = msgList.value.find(x => x.msgId === msgId)
+    const currentMsg = msgList.value.find(x => x.msgId === msgId) as Msg
     const msgContent = currentMsg.content
-    for await (const chunk of stream) {
+    for await (const chunk of stream as unknown as AsyncIterable<StreamChunk>) {
         let lastContent = msgContent[msgContent.length - 1]
 
         if (typeof chunk === 'string') {
@@ -234,7 +266,7 @@ async function promptModel ({
                 msgContent.push(chunk)
             }
             if (chunk.type === 'tool-call') {
-                await executeToolCall(chunk.value)
+                await executeToolCall(chunk.value as unknown as ToolCall)
             }
         }
     }
