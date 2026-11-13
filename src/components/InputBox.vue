@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import { expectedInputs } from "../composables/useModel";
 import { addMsg } from "../composables/useMsgList";
 import type { Msg, MsgContentItem } from "../composables/useMsgList";
 import {
@@ -15,6 +16,13 @@ import { isRecording, startRecording, stopRecording } from "../composables/useAu
 const inputVal = ref("");
 const inputImgs = ref([]);
 const inputAudio = ref("");
+
+const isAllowAudio = computed(() => {
+  return expectedInputs.value.some(x => x.type === 'audio')
+})
+const isAllowImage = computed(() => {
+  return expectedInputs.value.some(x => x.type === 'image')
+})
 
 const disableInput = computed(() => {
   return isGenerating.value || isIniting.value || availability.value !== "available";
@@ -97,7 +105,11 @@ async function handleRecording() {
     >
   </div>
   <div>
-    <button class="ml-2 px-2 border" :disabled="disableInput" @click="handleRecording">
+    <button
+      v-if="isAllowAudio"
+      class="ml-2 px-2 border"
+      :disabled="disableInput"
+      @click="handleRecording">
       {{ isRecording ? "Recording..." : "Record" }}
     </button>
     <input
@@ -107,7 +119,12 @@ async function handleRecording() {
       class="border"
       @keydown.enter="sendMsg"
     />
-    <input type="file" accept="image/*" multiple class="border" @change="handleImgInput" />
+    <input
+      v-if="isAllowImage"
+      type="file"
+      accept="image/*"
+      multiple class="border"
+      @change="handleImgInput" />
     <button class="ml-2 px-2 border" :disabled="disableInput" @click="sendMsg">Send</button>
     <button class="ml-2 px-2 border" :disabled="disableAbortBtn" @click="abortGenerating">
       Abort

@@ -23,7 +23,7 @@ function printMsgList() {
 
 <style lang="css" scoped>
 .msg-list {
-    height: 80vh;
+    height: 70vh;
     overflow: auto;
     border: 1px solid #ccc;
     margin: 12px 0;

@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { ref, computed } from "vue";
 
 import type { Msg, MsgContentItem } from "./useMsgList";
 import { msgList, addMsg, scrollList, clearMsgList, compactedHistory } from "./useMsgList";
@@ -33,7 +33,7 @@ const COMPACT_RATIO = 0.15;
 
 let isCompacting = false;
 
-const tools: LanguageModelTool[] = [
+const toolList: LanguageModelTool[] = [
   {
     name: "get_age_by_name",
     description: "Return the age of a person if asked by a name",
@@ -97,6 +97,37 @@ const tools: LanguageModelTool[] = [
     },
   },
 ];
+const fullExpectedInputs: ExpectedIO[] = [
+    { type: "text" },
+    { type: "audio" },
+    { type: "image" },
+    { type: "tool-call" },
+    { type: "tool-response" },
+]
+const fullExpectedOutputs: ExpectedIO[] =  [
+    { type: "text" },
+    { type: "audio" },
+    { type: "image" },
+  { type: "tool-call" },
+]
+const inputTypeCheckResults = ref([])
+const outputTypeCheckResults = ref([])
+const expectedInputs = computed(() => {
+  return inputTypeCheckResults.value.filter(x => x.result === 'available').map(x => {
+    return { type: x.type }
+  })
+})
+const expectedOutputs = computed(() => {
+  return outputTypeCheckResults.value.filter(x => x.result === 'available').map(x => {
+      return { type: x.type }
+  })
+})
+const tools = computed(() => {
+  if (expectedOutputs.value.some(x => x.type === 'tool-call')) {
+    return toolList
+  }
+  return []
+})
 
 const availability = ref("");
 const isGenerating = ref(false);
@@ -104,22 +135,19 @@ const isIniting = ref(false);
 const contextUsage = ref(0);
 const controller = ref<AbortController>();
 
-const sessionConfig: SessionConfig = {
-  // initialPrompts: [
-  //     {
-  //         role: 'system',
-  //         content: 'Use tools and chain of thoughts to help user'
-  //     }
-  // ],
-  expectedInputs: [
-    { type: "tool-call" },
-    { type: "tool-response" },
-    { type: "audio" },
-    { type: "image" },
-  ],
-  expectedOutputs: [{ type: "tool-call" }],
-  tools,
-};
+const sessionConfig = computed(() => {
+  return {
+    // initialPrompts: [
+    //     {
+    //         role: 'system',
+    //         content: 'Use tools and chain of thoughts to help user'
+    //     }
+    // ],
+    expectedInputs: expectedInputs.value,
+    expectedOutputs: expectedOutputs.value,
+    tools: tools.value,
+  }
+});
 
 const originSession = ref<LanguageModel>();
 const session = ref<LanguageModel>();
@@ -127,13 +155,29 @@ const session = ref<LanguageModel>();
 async function checkStatus(): Promise<void> {
   availability.value = await LanguageModel?.availability?.();
   if (availability.value !== "available") return;
+
+  inputTypeCheckResults.value = await Promise.all(fullExpectedInputs.map(async x => {
+    const result = await LanguageModel.availability({
+      expectedInputs: [x]
+    })
+    return { ...x, result }
+  }))
+  outputTypeCheckResults.value = await Promise.all(fullExpectedOutputs.map(async x => {
+    const result = await LanguageModel.availability({
+      expectedOutputs: [x]
+    })
+    return { ...x, result }
+  }))
+
+  console.log('CHECK', sessionConfig.value);
+  
 }
 
 async function initSession(): Promise<void> {
   if (isIniting.value) return;
   isIniting.value = true;
   await checkStatus();
-  originSession.value = await LanguageModel.create(sessionConfig as LanguageModelCreateOptions);
+  originSession.value = await LanguageModel.create(sessionConfig.value as LanguageModelCreateOptions);
   session.value = await originSession.value.clone();
   contextUsage.value = session.value.contextUsage;
   isIniting.value = false;
@@ -305,6 +349,9 @@ export {
   isIniting,
   contextUsage,
   controller,
+  inputTypeCheckResults,
+  outputTypeCheckResults,
+  expectedInputs,
   initSession,
   promptModel,
   formatToolCallMsgText,
