@@ -17,7 +17,7 @@ type ToolCall = {
 
 type StreamChunk = string | MsgContentItem;
 
-export type MsgType = LanguageModelMessageType | "tool-call" | "tool-response";
+export type MsgType = LanguageModelMessageType | "tool-call" | "tool-response" | "thought";
 
 interface ExpectedIO extends Omit<LanguageModelExpected, "type"> {
   type: MsgType;
@@ -108,8 +108,14 @@ const fullExpectedOutputs: ExpectedIO[] =  [
     { type: "text" },
     { type: "audio" },
     { type: "image" },
-  { type: "tool-call" },
+    { type: "tool-call" },
+    { type: "thought" },
 ]
+type ThinkingOption = 'none' | 'low' | 'medium' | 'high'
+const fullThinkingOptions: ThinkingOption[] = ['none', 'low', 'medium', 'high']
+const thinkingTypeCheckResults = ref([])
+const thinkingMode = ref<ThinkingOption>('none')
+
 const inputTypeCheckResults = ref([])
 const outputTypeCheckResults = ref([])
 const expectedInputs = computed(() => {
@@ -129,13 +135,17 @@ const tools = computed(() => {
   return []
 })
 
+const thinkingOptions = computed(() => {
+  return thinkingTypeCheckResults.value.filter(x => x.result === 'available').map(x => x.type)
+})
+
 const availability = ref("");
 const isGenerating = ref(false);
 const isIniting = ref(false);
 const contextUsage = ref(0);
 const controller = ref<AbortController>();
 
-const sessionConfig = computed(() => {
+const sessionConfig = computed<SessionConfig>(() => {
   return {
     // initialPrompts: [
     //     {
@@ -146,6 +156,7 @@ const sessionConfig = computed(() => {
     expectedInputs: expectedInputs.value,
     expectedOutputs: expectedOutputs.value,
     tools: tools.value,
+    thinkingEffort: thinkingMode.value
   }
 });
 
@@ -163,10 +174,22 @@ async function checkStatus(): Promise<void> {
     return { ...x, result }
   }))
   outputTypeCheckResults.value = await Promise.all(fullExpectedOutputs.map(async x => {
-    const result = await LanguageModel.availability({
-      expectedOutputs: [x]
-    })
+    let result = null
+    try {
+      result = await LanguageModel.availability({
+        expectedOutputs: [x]
+      })
+    } catch (error) {
+      result = error
+    }
     return { ...x, result }
+  }))
+
+  thinkingTypeCheckResults.value = await Promise.all(fullThinkingOptions.map(async x => {
+    const result = await LanguageModel.availability({
+      thinkingEffort: x
+    })
+    return { type: x, result}
   }))
 
   console.log('CHECK', sessionConfig.value);
@@ -233,7 +256,7 @@ async function updateContextUsage() {
 async function executeToolCall(toolCall: ToolCall): Promise<LanguageModelToolSuccess> {
   const { name, callId = "", callID = "", arguments: toolCallArguments } = toolCall;
   const toolCallId = callID || callId;
-  const target = tools.find((x) => x.name === name);
+  const target = tools.value.find((x) => x.name === name);
   if (!target || !target.execute) {
     return Promise.reject();
   }
@@ -286,6 +309,7 @@ async function promptModel({
   };
   const stream = await session.value.promptStreaming(chatHistory as LanguageModelPrompt, {
     signal: controller.value.signal,
+    thinkingEffort: thinkingMode.value
   });
 
   const currentMsg = msgList.value.find((x) => x.msgId === msgId) as Msg;
@@ -342,6 +366,8 @@ async function promptModel({
   return currentMsg;
 }
 
+
+
 export {
   session,
   availability,
@@ -351,7 +377,10 @@ export {
   controller,
   inputTypeCheckResults,
   outputTypeCheckResults,
+  thinkingTypeCheckResults,
+  thinkingOptions,
   expectedInputs,
+  thinkingMode,
   initSession,
   promptModel,
   formatToolCallMsgText,

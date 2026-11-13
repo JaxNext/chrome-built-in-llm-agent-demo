@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { session, availability, contextUsage, inputTypeCheckResults, outputTypeCheckResults } from "../composables/useModel";
+import { session, availability, contextUsage, inputTypeCheckResults, outputTypeCheckResults, thinkingTypeCheckResults } from "../composables/useModel";
 </script>
 
 <template>
@@ -20,6 +20,13 @@ import { session, availability, contextUsage, inputTypeCheckResults, outputTypeC
         Output:
         <span
             v-for="x in outputTypeCheckResults"
+            :key="x.type"
+            class="ml-4">{{ x.type }}: {{ x.result === 'available' ? '✅' : '❌' }}</span>
+    </div>
+    <div class="flex">
+        Thinking Mode:
+        <span
+            v-for="x in thinkingTypeCheckResults"
             :key="x.type"
             class="ml-4">{{ x.type }}: {{ x.result === 'available' ? '✅' : '❌' }}</span>
     </div>

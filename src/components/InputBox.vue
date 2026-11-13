@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { expectedInputs } from "../composables/useModel";
+import { expectedInputs, thinkingOptions, thinkingMode } from "../composables/useModel";
 import { addMsg } from "../composables/useMsgList";
 import type { Msg, MsgContentItem } from "../composables/useMsgList";
 import {
@@ -93,6 +93,7 @@ async function handleRecording() {
     sendMsg();
   }
 }
+
 </script>
 
 <template>
@@ -125,6 +126,14 @@ async function handleRecording() {
       accept="image/*"
       multiple class="border"
       @change="handleImgInput" />
+
+    Thinking Mode:
+    <select
+      v-if="thinkingOptions.length"
+      v-model="thinkingMode"
+      class="border">
+      <option v-for="mode in thinkingOptions" :key="mode">{{ mode }}</option>
+    </select>
     <button class="ml-2 px-2 border" :disabled="disableInput" @click="sendMsg">Send</button>
     <button class="ml-2 px-2 border" :disabled="disableAbortBtn" @click="abortGenerating">
       Abort
